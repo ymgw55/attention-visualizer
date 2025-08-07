@@ -52,16 +52,23 @@
     }
 
     /* highlight colours */
-    .q-highlight { fill: #1e40af !important; }
-    .k-highlight { fill: #b91c1c !important; }
-    .v-highlight { fill: #c08400 !important; }
-    .m-highlight { fill: #6b21a8 !important; }
-    .o-highlight { fill: #166534 !important; }
+    .q-highlight { fill: #3e63dd !important; }
+    .k-highlight { fill: #f15353 !important; }
+    .v-highlight { fill: #e2b75a !important; }
+    .m-highlight { fill: #802dc4 !important; }
+    .o-highlight { fill: #2aa85a !important; }
 
     /* cache colours (pale) */
     .k-cache { fill: #f0b6b6 !important; }
     .v-cache { fill: #ffe9a8 !important; }
     .m-cache { fill: #d9b8ff !important; }
+
+    /* cache pattern overlay */
+    .cache-overlay { 
+      fill: url(#cache-pattern) !important;
+      stroke: #666 !important;
+      stroke-width: 1 !important;
+    }
 
     .fade { opacity: .25; }
     
@@ -74,15 +81,28 @@
 </head>
 <body>
   <h2 style="margin:0">Attention Visualizer</h2>
-  <p style="margin:.2rem 0 0">Heads=4, Tokens=6</p>
+  <p style="margin:.2rem 0 .8rem 0">Heads=4, Tokens=6 (fixed)</p>
+  <p id="cache-explanation" style="margin:.5rem 0 1rem 0;font-size:.85rem;color:#666;display:none">
+    <strong>KV Cache:</strong> Hatched areas (
+    <svg width="12" height="12" style="vertical-align:middle;margin:0 2px">
+      <defs>
+        <pattern id="mini-cache-pattern" patternUnits="userSpaceOnUse" width="6" height="6">
+          <rect width="6" height="6" fill="none"/>
+          <path d="M0,6 l6,-6 M-1,1 l2,-2 M5,7 l2,-2" stroke="#666" stroke-width="1" stroke-opacity="0.4"/>
+        </pattern>
+      </defs>
+      <rect width="12" height="12" fill="url(#mini-cache-pattern)" stroke="#666"/>
+    </svg>
+    ) represent cached values
+  </p>
   <div id="controls">
     <button id="play-btn">⏸ Pause</button>
     <button id="cache-btn">KV Cache: OFF</button>
-    <label>KV Groups:
+    <label>KV Heads:
       <select id="groups-select">
-        <option value="4" selected>4</option>
-        <option value="2">2</option>
-        <option value="1">1</option>
+        <option value="4" selected>4 (MHA)</option>
+        <option value="2">2 (GQA)</option>
+        <option value="1">1 (MQA)</option>
       </select>
     </label>
     <label>Sliding Window:
@@ -112,7 +132,7 @@
     let X = {};
     
     function computeX() {
-      X.Q = 0;
+      X.Q = 60; // Add left margin for head labels
       X.K = X.Q + W_QVO + PAD_H;
       X.M = X.K + TOKENS * W_K + PAD_H;
       X.V = X.M + TOKENS * CELL + PAD_H;
@@ -128,7 +148,7 @@
     }
     
     function block(g, x, y, w, h, lab, cls, r = null, c = null) {
-      g.append('rect')
+      const rect = g.append('rect')
         .attr('x', x)
         .attr('y', y)
         .attr('width', w)
@@ -139,13 +159,24 @@
         .attr('data-r', r)
         .attr('data-c', c);
       
+      // Add overlay rect for cache pattern
+      g.append('rect')
+        .attr('x', x)
+        .attr('y', y)
+        .attr('width', w)
+        .attr('height', h)
+        .attr('class', `${cls} cache-overlay`)
+        .attr('data-r', r)
+        .attr('data-c', c)
+        .style('display', 'none');
+      
       if (lab) {
         g.append('text')
           .attr('x', x + w / 2)
           .attr('y', y + h / 2)
           .attr('text-anchor', 'middle')
           .attr('dominant-baseline', 'middle')
-          .attr('font-size', 10)
+          .attr('font-size', 12)
           .text(lab);
       }
     }
@@ -169,7 +200,54 @@
       const H = HEAD_HEIGHT * HEADS + HEAD_MARGIN * (HEADS - 1);
       svg = container.append('svg')
         .attr('width', X.W)
-        .attr('height', H);
+        .attr('height', H + 30); // Add extra height for section labels
+      
+      // Add section labels at the top
+      const labelY = 15;
+      svg.append('text')
+        .attr('x', X.Q + W_QVO / 2)
+        .attr('y', labelY)
+        .attr('text-anchor', 'middle')
+        .attr('font-size', 14)
+        .attr('font-weight', 'bold')
+        .attr('fill', '#333')
+        .text('Queries');
+      
+      svg.append('text')
+        .attr('x', X.K + TOKENS * W_K / 2)
+        .attr('y', labelY)
+        .attr('text-anchor', 'middle')
+        .attr('font-size', 14)
+        .attr('font-weight', 'bold')
+        .attr('fill', '#333')
+        .text('Keys');
+      
+      svg.append('text')
+        .attr('x', X.M + TOKENS * CELL / 2)
+        .attr('y', labelY)
+        .attr('text-anchor', 'middle')
+        .attr('font-size', 14)
+        .attr('font-weight', 'bold')
+        .attr('fill', '#333')
+        .text('Attention Weight');
+      
+      svg.append('text')
+        .attr('x', X.V + W_QVO / 2)
+        .attr('y', labelY)
+        .attr('text-anchor', 'middle')
+        .attr('font-size', 14)
+        .attr('font-weight', 'bold')
+        .attr('fill', '#333')
+        .text('Values');
+      
+      svg.append('text')
+        .attr('x', X.O + W_QVO / 2)
+        .attr('y', labelY)
+        .attr('text-anchor', 'middle')
+        .attr('font-size', 14)
+        .attr('font-weight', 'bold')
+        .attr('fill', '#333')
+        .text('Attention');
       
       svg.append('defs')
         .append('marker')
@@ -184,15 +262,46 @@
         .attr('d', 'M0 0 L10 5 L0 10 z')
         .attr('fill', '#555');
       
+      // Add patterns for cache visualization
+      const defs = svg.select('defs');
+      
+      const pattern = defs.append('pattern')
+        .attr('id', 'cache-pattern')
+        .attr('patternUnits', 'userSpaceOnUse')
+        .attr('width', 6)
+        .attr('height', 6);
+      
+      pattern.append('rect')
+        .attr('width', 6)
+        .attr('height', 6)
+        .attr('fill', 'none');
+      
+      pattern.append('path')
+        .attr('d', 'M0,6 l6,-6 M-1,1 l2,-2 M5,7 l2,-2')
+        .attr('stroke', '#666')
+        .attr('stroke-width', 1)
+        .attr('stroke-opacity', 0.4);
+      
       const hpg = HEADS / groups, meta = [];
       for (let g = 0; g < groups; g++) {
         const h0 = g * hpg, h1 = h0 + hpg - 1;
-        const yT = h0 * (HEAD_HEIGHT + HEAD_MARGIN), yB = h1 * (HEAD_HEIGHT + HEAD_MARGIN) + HEAD_HEIGHT;
+        const yT = h0 * (HEAD_HEIGHT + HEAD_MARGIN) + 30, yB = h1 * (HEAD_HEIGHT + HEAD_MARGIN) + HEAD_HEIGHT + 30;
         meta.push({ kC: (yT + yB) / 2, vT: (yT + yB) / 2 - TOKENS * H_QVO / 2, h0, h1 });
       }
       
       for (let h = 0; h < HEADS; h++) {
-        const y = h * (HEAD_HEIGHT + HEAD_MARGIN), gh = svg.append('g').attr('class', `head h${h}`);
+        const y = h * (HEAD_HEIGHT + HEAD_MARGIN) + 30, gh = svg.append('g').attr('class', `head h${h}`); // Add 30px offset for labels
+        
+        // Add head label
+        gh.append('text')
+          .attr('x', 50)
+          .attr('y', y + HEAD_HEIGHT / 2)
+          .attr('text-anchor', 'end')
+          .attr('dominant-baseline', 'middle')
+          .attr('font-size', 14)
+          .attr('font-weight', 'bold')
+          .attr('fill', '#333')
+          .text(`Head ${h + 1}`);
         
         for (let r = 0; r < TOKENS; r++) {
           block(gh, X.Q, y + r * ROW_H, W_QVO, H_QVO, `q${r + 1}`, 'q', r);
@@ -227,7 +336,7 @@
       const grp = h => Math.floor(h / hpg);
       
       for (let h = 0; h < HEADS; h++) {
-        const y = h * (HEAD_HEIGHT + HEAD_MARGIN), mid = qCenterY(y), m = meta[grp(h)];
+        const y = h * (HEAD_HEIGHT + HEAD_MARGIN) + 30, mid = qCenterY(y), m = meta[grp(h)];
         addA(arrows, X.Q + W_QVO, mid, K_L, m.kC);
         addA(arrows, M_R, mid, V_L, m.kC);
         addA(arrows, V_R, m.kC, O_L, mid);
@@ -235,7 +344,7 @@
       
       meta.forEach(m => {
         for (let h = m.h0; h <= m.h1; h++) {
-          addA(arrows, K_R, m.kC, M_L, qCenterY(h * (HEAD_HEIGHT + HEAD_MARGIN)));
+          addA(arrows, K_R, m.kC, M_L, qCenterY(h * (HEAD_HEIGHT + HEAD_MARGIN) + 30));
         }
       });
       
@@ -251,6 +360,7 @@
       svg.selectAll('.rect').attr('class', function() {
         return this.getAttribute('class').split(' ')[0] + ' rect';
       });
+      svg.selectAll('.cache-overlay').style('display', 'none');
     }
     
     function update() {
@@ -296,8 +406,9 @@
           
           if (kvCache) {
             if (r === step && inCol) {
-              const cls = (c < step) ? 'm-cache' : 'm-highlight';
-              d3.select(this).classed('fade', false).classed(cls, true);
+              // In KV cache mode, attention matrix is always newly computed (not cached)
+              // So use highlight color, not cache color
+              d3.select(this).classed('fade', false).classed('m-highlight', true);
             }
           } else {
             if (inRow && c <= r && inCol) {
@@ -315,6 +426,11 @@
           if (inW) {
             const cls = i === step ? 'k-highlight' : kvCache ? 'k-cache' : 'k-highlight';
             d3.select(this).classed('fade', false).classed(cls, true);
+            // Show cache pattern for cached K elements
+            if (kvCache && i < step) {
+              svg.selectAll(`${kv} .k.cache-overlay[data-c='${i}']`)
+                .style('display', 'block');
+            }
           }
         });
         
@@ -323,6 +439,11 @@
           if (inW) {
             const cls = r === step ? 'v-highlight' : kvCache ? 'v-cache' : 'v-highlight';
             d3.select(this).classed('fade', false).classed(cls, true);
+            // Show cache pattern for cached V elements
+            if (kvCache && r < step) {
+              svg.selectAll(`${kv} .v.cache-overlay[data-r='${r}']`)
+                .style('display', 'block');
+            }
           }
         });
       }
@@ -350,6 +471,7 @@
     d3.select('#cache-btn').on('click', () => {
       kvCache = !kvCache;
       d3.select('#cache-btn').text(`KV Cache: ${kvCache ? 'ON' : 'OFF'}`);
+      d3.select('#cache-explanation').style('display', kvCache ? 'block' : 'none');
       update();
     });
     
