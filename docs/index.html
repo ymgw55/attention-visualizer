@@ -39,7 +39,7 @@
     
     #step-display {
       font-weight: 600;
-      font-size: 1.1rem;
+      font-size: 1.3rem;
     }
     
     #container {
@@ -96,6 +96,7 @@
     ) represent cached values
   </p>
   <div id="controls">
+    <span id="step-display">Step: 1</span>
     <button id="play-btn">⏸ Pause</button>
     <button id="cache-btn">KV Cache: OFF</button>
     <label>KV Heads:
@@ -115,13 +116,12 @@
         <option value="1">1</option>
       </select>
     </label>
-    <span id="step-display">Step: 1</span>
   </div>
   <div id="container"></div>
 
   <script>
     /************** Configuration **************/
-    const HEADS = 4, TOKENS = 6, CELL = 28, ROW_H = CELL, W_QVO = CELL * 2, H_QVO = ROW_H, W_K = CELL, H_K = ROW_H * 2, PAD_H = 46, HEAD_MARGIN = 64, HEAD_HEIGHT = TOKENS * ROW_H;
+    const HEADS = 4, TOKENS = 6, CELL = 28, ROW_H = CELL, W_QVO = CELL * 2, H_QVO = ROW_H, W_K = CELL, H_K = ROW_H * 2, PAD_H = 46, HEAD_MARGIN = 32, HEAD_HEIGHT = TOKENS * ROW_H;
     
     /************** Runtime **************/
     let groups = 4, step = 0, playing = true, kvCache = false, winSetting = 'all';
@@ -137,7 +137,7 @@
       X.M = X.K + TOKENS * W_K + PAD_H;
       X.V = X.M + TOKENS * CELL + PAD_H;
       X.O = X.V + W_QVO + PAD_H;
-      X.W = X.O + W_QVO;
+      X.W = X.O + W_QVO + 20; // Add extra margin for "Attention" label
     }
     
     const qCenterY = y => y + TOKENS / 2 * ROW_H;
