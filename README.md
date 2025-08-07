@@ -27,3 +27,7 @@ The attention calculation animation was inspired by this resource. Thank you!
 ## Contributing
 
 We welcome contributions to improve the Attention Visualizer!
+
+## Development Notes
+
+This repository was created through vibe coding with ChatGPT o3 and GitHub Copilot (Claude Sonnet 4).
