@@ -1,0 +1,76 @@
+<!-- Debug-monolith: single-file index.html (4 heads, 6 tokens, sliding window) -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Attention Visualizer</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;margin:0;padding:1rem;background:#fafafa}
+    #controls{display:flex;flex-wrap:wrap;gap:1rem;align-items:center;margin-bottom:1rem}
+    #controls button,#controls select{padding:0.4rem 0.8rem;border:1px solid #8884;border-radius:4px;background:#fff;font-size:.9rem;cursor:pointer}
+    #controls button:hover,#controls select:hover{background:#f0f0f0}
+    #step-display{font-weight:600;font-size:1.1rem}
+    #container{overflow-x:auto;border:1px solid #ddd;background:#fff;padding:1rem;border-radius:6px;box-shadow:0 2px 4px rgba(0,0,0,.08)}
+
+    /* highlight colours */
+    .q-highlight{fill:#1e40af!important}
+    .k-highlight{fill:#b91c1c!important}
+    .v-highlight{fill:#c08400!important}
+    .m-highlight{fill:#6b21a8!important}
+    .o-highlight{fill:#166534!important}
+
+    /* cache colours (pale) */
+    .k-cache{fill:#f0b6b6!important}
+    .v-cache{fill:#ffe9a8!important}
+    .m-cache{fill:#d9b8ff!important}
+
+    .fade{opacity:.25}
+    line.arrow{stroke:#555;stroke-width:1.6;marker-end:url(#arrowhead)}
+  </style>
+</head>
+<body>
+  <h2 style="margin:0">Attention Visualizer</h2>
+  <p style="margin:.2rem 0 0">Heads=4, Tokens=6</p>
+  <div id="controls">
+    <button id="play-btn">⏸ Pause</button>
+    <button id="cache-btn">KV Cache: OFF</button>
+    <label>KV Groups:
+      <select id="groups-select"><option value="4" selected>4</option><option value="2">2</option><option value="1">1</option></select></label>
+    <label>Sliding Window:
+      <select id="window-select"><option value="all" selected>all</option><option value="5">5</option><option value="4">4</option><option value="3">3</option><option value="2">2</option><option value="1">1</option></select></label>
+    <span id="step-display">Step: 1</span>
+  </div>
+  <div id="container"></div>
+<script>
+/************** Configuration **************/
+const HEADS=4,TOKENS=6,CELL=28,ROW_H=CELL,W_QVO=CELL*2,H_QVO=ROW_H,W_K=CELL,H_K=ROW_H*2,PAD_H=46,HEAD_MARGIN=64,HEAD_HEIGHT=TOKENS*ROW_H;
+/************** Runtime **************/
+let groups=4,step=0,playing=true,kvCache=false,winSetting='all';
+/************** D3 roots **************/
+const container=d3.select('#container');let svg,timer;let X={};
+function computeX(){X.Q=0;X.K=X.Q+W_QVO+PAD_H;X.M=X.K+TOKENS*W_K+PAD_H;X.V=X.M+TOKENS*CELL+PAD_H;X.O=X.V+W_QVO+PAD_H;X.W=X.O+W_QVO;}
+const qCenterY=y=>y+TOKENS/2*ROW_H;
+/************** Helpers **************/
+function clearSvg(){svg&&svg.remove();}
+function block(g,x,y,w,h,lab,cls,r=null,c=null){g.append('rect').attr('x',x).attr('y',y).attr('width',w).attr('height',h).attr('fill','#fff').attr('stroke','#bbb').attr('class',`${cls} rect`).attr('data-r',r).attr('data-c',c);if(lab)g.append('text').attr('x',x+w/2).attr('y',y+h/2).attr('text-anchor','middle').attr('dominant-baseline','middle').attr('font-size',10).text(lab);}function addA(g,x1,y1,x2,y2){g.append('line').attr('class','arrow').attr('x1',x1).attr('y1',y1).attr('x2',x2).attr('y2',y2);}const win=()=>winSetting==='all'?Infinity:+winSetting;
+/************** Layout **************/
+function drawLayout(){clearSvg();computeX();const H=HEAD_HEIGHT*HEADS+HEAD_MARGIN*(HEADS-1);svg=container.append('svg').attr('width',X.W).attr('height',H);svg.append('defs').append('marker').attr('id','arrowhead').attr('viewBox','0 0 10 10').attr('refX',10).attr('refY',5).attr('markerWidth',6).attr('markerHeight',6).attr('orient','auto').append('path').attr('d','M0 0 L10 5 L0 10 z').attr('fill','#555');
+ const hpg=HEADS/groups,meta=[];for(let g=0;g<groups;g++){const h0=g*hpg,h1=h0+hpg-1;const yT=h0*(HEAD_HEIGHT+HEAD_MARGIN),yB=h1*(HEAD_HEIGHT+HEAD_MARGIN)+HEAD_HEIGHT;meta.push({kC:(yT+yB)/2,vT:(yT+yB)/2-TOKENS*H_QVO/2,h0,h1});}
+ for(let h=0;h<HEADS;h++){const y=h*(HEAD_HEIGHT+HEAD_MARGIN),gh=svg.append('g').attr('class',`head h${h}`);for(let r=0;r<TOKENS;r++)block(gh,X.Q,y+r*ROW_H,W_QVO,H_QVO,`q${r+1}`,'q',r);for(let r=0;r<TOKENS;r++)for(let c=0;c<TOKENS;c++)block(gh,X.M+c*CELL,y+r*CELL,CELL,CELL,'','m',r,c);for(let r=0;r<TOKENS;r++)block(gh,X.O,y+r*ROW_H,W_QVO,H_QVO,`o${r+1}`,'o',r);}meta.forEach((m,i)=>{const g=svg.append('g').attr('class',`kv g${i}`);const yK=m.kC-H_K/2;for(let c=0;c<TOKENS;c++)block(g,X.K+c*W_K,yK,W_K,H_K,`k${c+1}`,'k',null,c);for(let r=0;r<TOKENS;r++)block(g,X.V,m.vT+r*H_QVO,W_QVO,H_QVO,`v${r+1}`,'v',r);});
+ const arrows=svg.append('g');const K_L=X.K,K_R=X.K+TOKENS*W_K,M_L=X.M,M_R=X.M+TOKENS*CELL,V_L=X.V,V_R=X.V+W_QVO,O_L=X.O;const grp=h=>Math.floor(h/hpg);for(let h=0;h<HEADS;h++){const y=h*(HEAD_HEIGHT+HEAD_MARGIN),mid=qCenterY(y),m=meta[grp(h)];addA(arrows,X.Q+W_QVO,mid,K_L,m.kC);addA(arrows,M_R,mid,V_L,m.kC);addA(arrows,V_R,m.kC,O_L,mid);}meta.forEach(m=>{for(let h=m.h0;h<=m.h1;h++){addA(arrows,K_R,m.kC,M_L,qCenterY(h*(HEAD_HEIGHT+HEAD_MARGIN)));}});
+ update();}
+/************** Highlight **************/
+function resetFade(){svg.selectAll('rect').classed('fade',true);}function clearHL(){svg.selectAll('.rect').attr('class',function(){return this.getAttribute('class').split(' ')[0]+' rect'});}function update(){resetFade();clearHL();const w=win();const begin=Math.max(0,step-w+1);const hpg=HEADS/groups;const grp=h=>Math.floor(h/hpg);
+ for(let h=0;h<HEADS;h++){const sel=`.h${h}`;svg.selectAll(`${sel} .q.rect[data-r='${step}']`).classed('fade',false).classed('q-highlight',true);svg.selectAll(`${sel} .o.rect[data-r='${step}']`).classed('fade',false).classed('o-highlight',true);svg.selectAll(`${sel} .q.rect`).each(function(){const r=+this.dataset.r;if(kvCache){if(r===step)return;}else{if(r>=begin&&r<step)d3.select(this).classed('fade',false).classed('q-highlight',true);} });svg.selectAll(`${sel} .o.rect`).each(function(){const r=+this.dataset.r;if(kvCache){if(r===step)return;}else{if(r>=begin&&r<step)d3.select(this).classed('fade',false).classed('o-highlight',true);} });
+    svg.selectAll(`${sel} .m.rect`).each(function(){const r=+this.dataset.r,c=+this.dataset.c;const inRow=r>=begin&&r<=step;const inCol=c>=begin&&c<=step;if(kvCache){if(r===step&&inCol){const cls=(c<step)?'m-cache':'m-highlight';d3.select(this).classed('fade',false).classed(cls,true);} }else{if(inRow&&c<=r&&inCol){d3.select(this).classed('fade',false).classed('m-highlight',true);} }});}for(let g=0;g<groups;g++){const kv=`.g${g}`;svg.selectAll(`${kv} .k.rect`).each(function(_,i){const inW=i>=begin&&i<=step;if(inW){const cls=i===step?'k-highlight':kvCache?'k-cache':'k-highlight';d3.select(this).classed('fade',false).classed(cls,true);}});svg.selectAll(`${kv} .v.rect`).each(function(_,r){const inW=r>=begin&&r<=step;if(inW){const cls=r===step?'v-highlight':kvCache?'v-cache':'v-highlight';d3.select(this).classed('fade',false).classed(cls,true);}});}d3.select('#step-display').text(`Step: ${step+1}`);}  
+/************** Timer **************/
+function run(){timer&&timer.stop();timer=d3.interval(()=>{if(playing){step=(step+1)%TOKENS;update();}},1400);}  
+/************** Controls **************/
+d3.select('#play-btn').on('click',()=>{playing=!playing;d3.select('#play-btn').text(playing?'⏸ Pause':'▶ Play');});d3.select('#cache-btn').on('click',()=>{kvCache=!kvCache;d3.select('#cache-btn').text(`KV Cache: ${kvCache?'ON':'OFF'}`);update();});d3.select('#groups-select').on('change',function(){groups=+this.value;drawLayout();});d3.select('#window-select').on('change',function(){winSetting=this.value;update();});
+/************** Init **************/
+drawLayout();run();
+</script>
+</body>
+</html>
