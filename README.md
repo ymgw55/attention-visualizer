@@ -23,7 +23,7 @@ The attention calculation animation was inspired by this resource. Thank you!
 
 - [Transformers KV Caching Explained](https://medium.com/@joaolages/kv-caching-explained-276520203249) - João Lages, 2023
 
-The interactive visualization approach was inspired by CNN visualizers:
+The interactive visualization approach was inspired by Convolution visualizers:
 
 - [Convolution Visualizer](https://ezyang.github.io/convolution-visualizer/) - Edward Z. Yang
 
