@@ -79,9 +79,35 @@
       stroke-width: 1.6;
       marker-end: url(#arrowhead);
     }
+    
+    #header-links {
+      position: absolute;
+      top: 1rem;
+      right: 1rem;
+      display: flex;
+      gap: 0.8rem;
+      font-size: 0.9rem;
+    }
+    
+    #header-links a {
+      color: #666;
+      text-decoration: none;
+      padding: 0.3rem 0.6rem;
+      border-radius: 4px;
+      transition: background-color 0.2s;
+    }
+    
+    #header-links a:hover {
+      background-color: #f0f0f0;
+      color: #333;
+    }
   </style>
 </head>
 <body>
+  <div id="header-links">
+    <a href="https://github.com/ymgw55/attention-visualizer" target="_blank">GitHub</a>
+    <a href="https://ymgw55.github.io/" target="_blank">Hiroaki Yamagiwa</a>
+  </div>
   <h2 style="margin:0">Attention Visualizer</h2>
   <p style="margin:.2rem 0 .8rem 0">Heads=4, Tokens=6 (fixed)</p>
   <p id="cache-explanation" style="margin:.5rem 0 1rem 0;font-size:.85rem;color:#666;display:none">
