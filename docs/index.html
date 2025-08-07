@@ -72,6 +72,12 @@
       stroke-width: 1 !important;
     }
 
+    /* masked (future) attention weights */
+    .masked { 
+      fill: #f5f5f5 !important;
+      stroke: #ddd !important;
+    }
+
     .fade { opacity: .25; }
     
     line.arrow {
@@ -110,7 +116,7 @@
   </div>
   <h2 style="margin:0">Attention Visualizer</h2>
   <p style="margin:.2rem 0 .8rem 0">Heads=4, Tokens=6 (fixed)</p>
-  <p id="cache-explanation" style="margin:.5rem 0 1rem 0;font-size:.85rem;color:#666;display:none">
+  <p id="cache-explanation" style="margin:.5rem 0 .5rem 0;font-size:.85rem;color:#666;display:none">
     <strong>KV Cache:</strong> Hatched areas (
     <svg width="12" height="12" style="vertical-align:middle;margin:0 2px">
       <defs>
@@ -122,6 +128,9 @@
       <rect width="12" height="12" fill="url(#mini-cache-pattern)" stroke="#666"/>
     </svg>
     ) represent cached values
+  </p>
+  <p id="mask-explanation" style="margin:.5rem 0 1rem 0;font-size:.85rem;color:#666;">
+    <strong>Attention Masking:</strong> Light gray areas represent masked (future) positions
   </p>
   <div id="controls">
     <span id="step-display">Step: 1</span>
@@ -431,6 +440,12 @@
           const r = +this.dataset.r, c = +this.dataset.c;
           const inRow = r >= begin && r <= step;
           const inCol = c >= begin && c <= step;
+          
+          // Mark masked (future) positions with light gray
+          if (c > r) {
+            d3.select(this).classed('fade', false).classed('masked', true);
+            return;
+          }
           
           if (kvCache) {
             if (r === step && inCol) {
