@@ -130,7 +130,7 @@
     ) represent cached values
   </p>
   <p id="mask-explanation" style="margin:.5rem 0 1rem 0;font-size:.85rem;color:#666;">
-    <strong>Attention Masking:</strong> Light gray areas represent masked (future) positions
+    <strong>Attention Masking:</strong> Light gray areas are masked (future & out-of-window)
   </p>
   <div id="controls">
     <span id="step-display">Step: 1</span>
@@ -417,7 +417,6 @@
       clearHL();
       
       const w = win();
-      const begin = Math.max(0, step - w + 1);
       const hpg = HEADS / groups;
       const grp = h => Math.floor(h / hpg);
       
@@ -431,7 +430,7 @@
           if (kvCache) {
             if (r === step) return;
           } else {
-            if (r >= begin && r < step) {
+            if (r <= step) {
               d3.select(this).classed('fade', false).classed('q-highlight', true);
             }
           }
@@ -442,7 +441,7 @@
           if (kvCache) {
             if (r === step) return;
           } else {
-            if (r >= begin && r < step) {
+            if (r <= step) {
               d3.select(this).classed('fade', false).classed('o-highlight', true);
             }
           }
@@ -450,8 +449,6 @@
         
         svg.selectAll(`${sel} .m.rect`).each(function() {
           const r = +this.dataset.r, c = +this.dataset.c;
-          const inRow = r >= begin && r <= step;
-          const inCol = c >= begin && c <= step;
           
           // Mark masked (future) positions with light gray
           if (c > r) {
@@ -459,14 +456,24 @@
             return;
           }
           
+          // Apply sliding window constraint to attention matrix only
+          const windowStart = Math.max(0, r - w + 1);
+          const inWindow = c >= windowStart && c <= r && r <= step;
+          
+          // Mark positions outside sliding window (left bottom) with light gray
+          if (w !== Infinity && c < windowStart && r <= step) {
+            d3.select(this).classed('fade', false).classed('masked', true);
+            return;
+          }
+          
           if (kvCache) {
-            if (r === step && inCol) {
+            if (r === step && inWindow) {
               // In KV cache mode, attention matrix is always newly computed (not cached)
               // So use highlight color, not cache color
               d3.select(this).classed('fade', false).classed('m-highlight', true);
             }
           } else {
-            if (inRow && c <= r && inCol) {
+            if (inWindow) {
               d3.select(this).classed('fade', false).classed('m-highlight', true);
             }
           }
@@ -477,8 +484,9 @@
         const kv = `.g${g}`;
         
         svg.selectAll(`${kv} .k.rect`).each(function(_, i) {
-          const inW = i >= begin && i <= step;
-          if (inW) {
+          // Keys are available up to current step
+          const inRange = i <= step;
+          if (inRange) {
             const cls = i === step ? 'k-highlight' : kvCache ? 'k-cache' : 'k-highlight';
             d3.select(this).classed('fade', false).classed(cls, true);
             // Show cache pattern for cached K elements
@@ -490,8 +498,9 @@
         });
         
         svg.selectAll(`${kv} .v.rect`).each(function(_, r) {
-          const inW = r >= begin && r <= step;
-          if (inW) {
+          // Values are available up to current step
+          const inRange = r <= step;
+          if (inRange) {
             const cls = r === step ? 'v-highlight' : kvCache ? 'v-cache' : 'v-highlight';
             d3.select(this).classed('fade', false).classed(cls, true);
             // Show cache pattern for cached V elements
