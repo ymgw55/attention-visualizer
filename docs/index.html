@@ -92,14 +92,21 @@
     /* cache pattern overlay */
     .cache-overlay {
       fill: url(#cache-pattern) !important;
-      stroke: #666 !important;
-      stroke-width: 1 !important;
+      stroke: none !important;
+      pointer-events: none;
+      mix-blend-mode: multiply;
+    }
+
+    /* cache pattern overlay in opacity mode - more subtle */
+    .cache-overlay.opacity-mode {
+      opacity: 0.3;
+      mix-blend-mode: normal;
     }
 
     /* masked (future) attention weights */
     .masked {
-      fill: #e0e0e0 !important;
-      stroke: #bbb !important;
+      fill: #c0c0c0 !important;
+      stroke: #999 !important;
     }
 
     .fade {
@@ -152,18 +159,19 @@
     <strong>KV Cache:</strong> Hatched areas (
     <svg width="12" height="12" style="vertical-align:middle;margin:0 2px">
       <defs>
-        <pattern id="mini-cache-pattern" patternUnits="userSpaceOnUse" width="6" height="6">
-          <rect width="6" height="6" fill="none" />
-          <path d="M0,6 l6,-6 M-1,1 l2,-2 M5,7 l2,-2" stroke="#666" stroke-width="1" stroke-opacity="0.4" />
+        <pattern id="mini-cache-pattern" patternUnits="userSpaceOnUse" width="8" height="8">
+          <rect width="8" height="8" fill="white" />
+          <path d="M0,8 l8,-8 M-1,1 l2,-2 M7,9 l2,-2" stroke="#333" stroke-width="1.0" stroke-opacity="0.6" />
         </pattern>
       </defs>
-      <rect width="12" height="12" fill="url(#mini-cache-pattern)" stroke="#666" />
+      <rect width="12" height="12" fill="url(#mini-cache-pattern)" stroke="#333" />
     </svg>
     )
   </p>
   <div id="controls">
     <span id="step-display">Step: 1</span>
     <button id="play-btn">⏸ Pause</button>
+    <button id="opacity-btn">Opacity: OFF</button>
     <button id="cache-btn">KV Cache: OFF</button>
     <label>KV Heads:
       <select id="groups-select">
@@ -195,7 +203,172 @@
     const HEADS = 4, TOKENS = 6, CELL = 28, ROW_H = CELL, W_QVO = CELL * 2, H_QVO = ROW_H, W_K = CELL, H_K = ROW_H * 2, PAD_H = 64, HEAD_MARGIN = 32, HEAD_HEIGHT = TOKENS * ROW_H;
 
     /************** Runtime **************/
-    let groups = 4, step = 0, playing = true, kvCache = false, winSetting = 'all', attentionSinks = 0;
+    let groups = 4, step = 0, playing = true, kvCache = false, winSetting = 'all', attentionSinks = 0, opacityMode = false;
+
+    // Predefined opacity values for each query (6 queries, 4 heads)
+    const queryOpacities = [
+      [1.0, 0.2, 0.7, 0.4], // q1: head1, head2, head3, head4
+      [0.3, 0.9, 0.1, 0.6], // q2
+      [0.8, 0.1, 1.0, 0.3], // q3
+      [0.2, 0.8, 0.4, 1.0], // q4
+      [0.9, 0.3, 0.6, 0.1], // q5
+      [0.4, 1.0, 0.2, 0.8]  // q6
+    ];
+
+    // Predefined opacity values for each key (6 keys, 4 heads)
+    const keyOpacities = [
+      [0.7, 0.8, 0.9, 0.5], // k1: head1, head2, head3, head4
+      [0.2, 0.6, 0.4, 0.7], // k2
+      [0.1, 0.1, 0.8, 0.3], // k3
+      [0.8, 0.5, 0.2, 0.1], // k4
+      [0.3, 0.3, 0.1, 0.8], // k5
+      [0.4, 0.2, 0.7, 0.4]  // k6
+    ];
+
+    // Predefined opacity values for each value (6 values, 4 heads)
+    const valueOpacities = [
+      [0.4, 0.5, 0.3, 0.6], // v1: head1, head2, head3, head4
+      [0.8, 0.8, 1.0, 0.4], // v2
+      [0.5, 0.3, 0.1, 0.9], // v3
+      [1.0, 0.7, 0.6, 0.2], // v4
+      [0.2, 0.1, 0.9, 0.5], // v5
+      [0.7, 0.9, 0.4, 1.0]  // v6
+    ];
+
+    // Random constant terms for each query (6 queries, 4 heads) - all positive values
+    const queryConstants = [
+      [0.5, 0.5, 0.5, 0.5], // c1: head1, head2, head3, head4
+      [0.02, 0.03, 0.04, 0.03], // c2
+      [0.01, 0.02, 0.03, 0.04], // c3
+      [0.02, 0.03, 0.04, 0.05], // c4
+      [0.03, 0.04, 0.05, 0.02], // c5
+      [0.01, 0.01, 0.02, 0.03]  // c6
+    ];
+
+    // Function to compute attention opacities for a given head
+    function computeAttentionOpacities(head, currentStep, windowSize, attentionSinks) {
+      const opacities = Array(TOKENS).fill(null).map(() => Array(TOKENS).fill(0));
+
+      // Determine which head's key/query values to use based on groups setting
+      let keyHeadIndex, queryHeadIndex;
+      if (groups === 4) {
+        // MHA: use head index directly
+        keyHeadIndex = head;
+        queryHeadIndex = head;
+      } else if (groups === 2) {
+        // GQA: head 1,2 use head1 (index 0), head 3,4 use head3 (index 2)
+        const groupIndex = Math.floor(head / 2);
+        keyHeadIndex = groupIndex === 0 ? 0 : 2;
+        queryHeadIndex = head;
+      } else if (groups === 1) {
+        // MQA: all heads use head1 (index 0)
+        keyHeadIndex = 0;
+        queryHeadIndex = head;
+      }
+
+      for (let r = 0; r <= currentStep; r++) {
+        const attentionRow = [];
+        let sum = 0;
+
+        // First pass: compute raw attention values and identify non-masked positions
+        for (let c = 0; c < TOKENS; c++) {
+          // Check if this position should be masked
+          const isFuture = c > r;
+          const windowStart = Math.max(0, r - windowSize + 1);
+          const isOutOfWindow = windowSize !== Infinity && c < windowStart;
+          const isInAttentionSinks = windowSize !== Infinity && c < attentionSinks;
+
+          if (isFuture || (isOutOfWindow && !isInAttentionSinks)) {
+            attentionRow[c] = 0; // Masked position
+          } else {
+            // Compute attention: q_i * k_j + c_i (no max needed since constants are positive)
+            const q_i = queryOpacities[r][queryHeadIndex];
+            const k_j = keyOpacities[c][keyHeadIndex];
+            const c_i = queryConstants[r][queryHeadIndex];
+            const attention = q_i * k_j + c_i;
+            attentionRow[c] = attention;
+            sum += attention; // Only add non-masked values to sum
+          }
+        }
+
+        // Second pass: normalize only non-masked positions so their sum equals 1
+        if (sum > 0) {
+          for (let c = 0; c < TOKENS; c++) {
+            if (attentionRow[c] > 0) { // Only normalize non-masked positions
+              opacities[r][c] = attentionRow[c] / sum;
+            }
+          }
+        }
+      }
+
+      return opacities;
+    }
+
+    // Function to compute output values for all heads and all steps
+    function computeAllOutputOpacities(windowSize, attentionSinks) {
+      const tau = 0.25; // Temperature parameter for output normalization
+      const allOutputs = [];
+
+      // Compute outputs for all heads and all steps
+      for (let h = 0; h < HEADS; h++) {
+        const headOutputs = [];
+
+        // Determine which head's value index to use based on groups setting
+        let valueHeadIndex;
+        if (groups === 4) {
+          // MHA: use head index directly
+          valueHeadIndex = h;
+        } else if (groups === 2) {
+          // GQA: head 1,2 use head1 (index 0), head 3,4 use head3 (index 2)
+          const groupIndex = Math.floor(h / 2);
+          valueHeadIndex = groupIndex === 0 ? 0 : 2;
+        } else if (groups === 1) {
+          // MQA: all heads use head1 (index 0)
+          valueHeadIndex = 0;
+        }
+
+        // Get attention weights for this head
+        const attentionWeights = computeAttentionOpacities(h, TOKENS - 1, windowSize, attentionSinks);
+
+        for (let r = 0; r < TOKENS; r++) {
+          let outputValue = 0;
+
+          // Calculate sum of (attention_weight * value) for non-masked positions
+          for (let c = 0; c < TOKENS; c++) {
+            if (attentionWeights[r][c] > 0) { // Only non-masked positions
+              const attentionWeight = attentionWeights[r][c];
+              const valueOpacity = valueOpacities[c][valueHeadIndex];
+              outputValue += attentionWeight * valueOpacity;
+            }
+          }
+
+          headOutputs.push(outputValue);
+        }
+
+        allOutputs.push(headOutputs);
+      }
+
+      // Find maximum output value across all heads and steps
+      let maxOutput = -Infinity;
+      for (let h = 0; h < HEADS; h++) {
+        for (let r = 0; r < TOKENS; r++) {
+          maxOutput = Math.max(maxOutput, allOutputs[h][r]);
+        }
+      }
+
+      // Apply exp((output - max) / tau) normalization with temperature
+      const normalizedOutputs = [];
+      for (let h = 0; h < HEADS; h++) {
+        const normalizedHeadOutputs = [];
+        for (let r = 0; r < TOKENS; r++) {
+          const normalizedValue = Math.exp((allOutputs[h][r] - maxOutput) / tau);
+          normalizedHeadOutputs.push(normalizedValue);
+        }
+        normalizedOutputs.push(normalizedHeadOutputs);
+      }
+
+      return normalizedOutputs;
+    }
 
     /************** D3 roots **************/
     const container = d3.select('#container');
@@ -339,19 +512,20 @@
       const pattern = defs.append('pattern')
         .attr('id', 'cache-pattern')
         .attr('patternUnits', 'userSpaceOnUse')
-        .attr('width', 6)
-        .attr('height', 6);
+        .attr('width', 8)
+        .attr('height', 8);
 
       pattern.append('rect')
-        .attr('width', 6)
-        .attr('height', 6)
-        .attr('fill', 'none');
+        .attr('width', 8)
+        .attr('height', 8)
+        .attr('fill', 'white')
+        .attr('fill-opacity', 0);
 
       pattern.append('path')
-        .attr('d', 'M0,6 l6,-6 M-1,1 l2,-2 M5,7 l2,-2')
-        .attr('stroke', '#666')
-        .attr('stroke-width', 1)
-        .attr('stroke-opacity', 0.4);
+        .attr('d', 'M0,8 l8,-8 M-1,1 l2,-2 M7,9 l2,-2')
+        .attr('stroke', '#000')
+        .attr('stroke-width', 1.2)
+        .attr('stroke-opacity', 0.9);
 
       const hpg = HEADS / groups, meta = [];
       for (let g = 0; g < groups; g++) {
@@ -444,6 +618,8 @@
         return this.getAttribute('class').split(' ')[0] + ' rect';
       });
       svg.selectAll('.cache-overlay').style('display', 'none');
+      // Reset opacity
+      svg.selectAll('.rect').style('opacity', null);
     }
 
     function update() {
@@ -454,6 +630,12 @@
       const hpg = HEADS / groups;
       const grp = h => Math.floor(h / hpg);
 
+      // Compute output opacities for all heads and steps if opacity mode is on
+      let outputOpacities = null;
+      if (opacityMode) {
+        outputOpacities = computeAllOutputOpacities(w, attentionSinks);
+      }
+
       for (let h = 0; h < HEADS; h++) {
         const sel = `.h${h}`;
         svg.selectAll(`${sel} .q.rect[data-r='${step}']`).classed('fade', false).classed('q-highlight', true);
@@ -462,10 +644,23 @@
         svg.selectAll(`${sel} .q.rect`).each(function () {
           const r = +this.dataset.r;
           if (kvCache) {
-            if (r === step) return;
+            if (r === step) {
+              d3.select(this).classed('fade', false).classed('q-highlight', true);
+              // Apply opacity for current query if opacity mode is on
+              if (opacityMode && r < queryOpacities.length) {
+                const opacity = queryOpacities[r][h];
+                d3.select(this).style('opacity', opacity);
+              }
+              return;
+            }
           } else {
             if (r <= step) {
               d3.select(this).classed('fade', false).classed('q-highlight', true);
+              // Apply opacity for queries if opacity mode is on
+              if (opacityMode && r < queryOpacities.length) {
+                const opacity = queryOpacities[r][h];
+                d3.select(this).style('opacity', opacity);
+              }
             }
           }
         });
@@ -473,10 +668,23 @@
         svg.selectAll(`${sel} .o.rect`).each(function () {
           const r = +this.dataset.r;
           if (kvCache) {
-            if (r === step) return;
+            if (r === step) {
+              d3.select(this).classed('fade', false).classed('o-highlight', true);
+              // Apply opacity for output if opacity mode is on
+              if (opacityMode && outputOpacities && r < outputOpacities[h].length) {
+                const opacity = outputOpacities[h][r];
+                d3.select(this).style('opacity', opacity);
+              }
+              return;
+            }
           } else {
             if (r <= step) {
               d3.select(this).classed('fade', false).classed('o-highlight', true);
+              // Apply opacity for output if opacity mode is on
+              if (opacityMode && outputOpacities && r < outputOpacities[h].length) {
+                const opacity = outputOpacities[h][r];
+                d3.select(this).style('opacity', opacity);
+              }
             }
           }
         });
@@ -508,10 +716,26 @@
               // In KV cache mode, attention matrix is always newly computed (not cached)
               // So use highlight color, not cache color
               d3.select(this).classed('fade', false).classed('m-highlight', true);
+
+              // Apply opacity for attention if opacity mode is on
+              if (opacityMode) {
+                const attentionOpacities = computeAttentionOpacities(h, step, w, attentionSinks);
+                if (r < attentionOpacities.length && c < attentionOpacities[r].length && attentionOpacities[r][c] > 0) {
+                  d3.select(this).style('opacity', attentionOpacities[r][c]);
+                }
+              }
             }
           } else {
             if (inWindow || inAttentionSinks) {
               d3.select(this).classed('fade', false).classed('m-highlight', true);
+
+              // Apply opacity for attention if opacity mode is on
+              if (opacityMode) {
+                const attentionOpacities = computeAttentionOpacities(h, step, w, attentionSinks);
+                if (r < attentionOpacities.length && c < attentionOpacities[r].length && attentionOpacities[r][c] > 0) {
+                  d3.select(this).style('opacity', attentionOpacities[r][c]);
+                }
+              }
             }
           }
         });
@@ -536,10 +760,39 @@
 
             const cls = i === step ? 'k-highlight' : kvCache ? 'k-cache' : 'k-highlight';
             d3.select(this).classed('fade', false).classed(cls, true);
+
+            // Apply opacity for keys if opacity mode is on
+            if (opacityMode && i < keyOpacities.length) {
+              // Determine which head's opacity to use based on groups setting
+              let headIndex;
+              if (groups === 4) {
+                // MHA: each group has 1 head, use the head index directly
+                headIndex = g;
+              } else if (groups === 2) {
+                // GQA: head 1,2 use head1 (index 0), head 3,4 use head3 (index 2)
+                headIndex = g === 0 ? 0 : 2;
+              } else if (groups === 1) {
+                // MQA: all heads use head1 (index 0)
+                headIndex = 0;
+              }
+
+              if (headIndex < keyOpacities[i].length) {
+                const opacity = keyOpacities[i][headIndex];
+                d3.select(this).style('opacity', opacity);
+              }
+            }
+
             // Show cache pattern for cached K elements
             if (kvCache && i < step) {
-              svg.selectAll(`${kv} .k.cache-overlay[data-c='${i}']`)
-                .style('display', 'block');
+              const overlay = svg.selectAll(`${kv} .k.cache-overlay[data-c='${i}']`);
+              overlay.style('display', 'block');
+
+              // In opacity mode, add class for more subtle pattern
+              if (opacityMode) {
+                overlay.classed('opacity-mode', true);
+              } else {
+                overlay.classed('opacity-mode', false);
+              }
             }
           }
         });
@@ -560,10 +813,39 @@
 
             const cls = r === step ? 'v-highlight' : kvCache ? 'v-cache' : 'v-highlight';
             d3.select(this).classed('fade', false).classed(cls, true);
+
+            // Apply opacity for values if opacity mode is on
+            if (opacityMode && r < valueOpacities.length) {
+              // Determine which head's opacity to use based on groups setting
+              let headIndex;
+              if (groups === 4) {
+                // MHA: each group has 1 head, use the head index directly
+                headIndex = g;
+              } else if (groups === 2) {
+                // GQA: head 1,2 use head1 (index 0), head 3,4 use head3 (index 2)
+                headIndex = g === 0 ? 0 : 2;
+              } else if (groups === 1) {
+                // MQA: all heads use head1 (index 0)
+                headIndex = 0;
+              }
+
+              if (headIndex < valueOpacities[r].length) {
+                const opacity = valueOpacities[r][headIndex];
+                d3.select(this).style('opacity', opacity);
+              }
+            }
+
             // Show cache pattern for cached V elements
             if (kvCache && r < step) {
-              svg.selectAll(`${kv} .v.cache-overlay[data-r='${r}']`)
-                .style('display', 'block');
+              const overlay = svg.selectAll(`${kv} .v.cache-overlay[data-r='${r}']`);
+              overlay.style('display', 'block');
+
+              // In opacity mode, add class for more subtle pattern
+              if (opacityMode) {
+                overlay.classed('opacity-mode', true);
+              } else {
+                overlay.classed('opacity-mode', false);
+              }
             }
           }
         });
@@ -587,6 +869,12 @@
     d3.select('#play-btn').on('click', () => {
       playing = !playing;
       d3.select('#play-btn').text(playing ? '⏸ Pause' : '▶ Play');
+    });
+
+    d3.select('#opacity-btn').on('click', () => {
+      opacityMode = !opacityMode;
+      d3.select('#opacity-btn').text(`Opacity: ${opacityMode ? 'ON' : 'OFF'}`);
+      update();
     });
 
     d3.select('#cache-btn').on('click', () => {
