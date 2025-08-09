@@ -57,23 +57,23 @@
 
     /* highlight colours */
     .q-highlight {
-      fill: #3e63dd !important;
+      fill: #5679ea !important;
     }
 
     .k-highlight {
-      fill: #f15353 !important;
+      fill: #f46666 !important;
     }
 
     .v-highlight {
-      fill: #e2b75a !important;
+      fill: #f1cf87 !important;
     }
 
     .m-highlight {
-      fill: #802dc4 !important;
+      fill: #c195e5 !important;
     }
 
     .o-highlight {
-      fill: #2aa85a !important;
+      fill: #37be6b !important;
     }
 
     /* cache colours (pale) */
@@ -141,6 +141,25 @@
       background-color: #f0f0f0;
       color: #333;
     }
+
+    /* === Patch: disable hatch overlay and use top-left check badge for KV cache === */
+    .cache-overlay {
+      display: none !important;
+      opacity: 1 !important;
+      mix-blend-mode: normal !important;
+    }
+
+    .cache-overlay.opacity-mode {
+      opacity: 1 !important;
+    }
+
+    /* Badge shown on cached K/V blocks (does not affect block opacity) */
+    .cache-badge {
+      pointer-events: none;
+      font-size: 12px;
+      font-weight: 900;
+      fill: #333;
+    }
   </style>
 </head>
 
@@ -156,17 +175,7 @@
     <strong>Attention Masks:</strong> Gray areas (future & out-of-window)
   </p>
   <p id="cache-explanation" style="margin:.5rem 0 1rem 0;font-size:.85rem;color:#666;visibility:hidden">
-    <strong>KV Cache:</strong> Hatched areas (
-    <svg width="12" height="12" style="vertical-align:middle;margin:0 2px">
-      <defs>
-        <pattern id="mini-cache-pattern" patternUnits="userSpaceOnUse" width="8" height="8">
-          <rect width="8" height="8" fill="white" />
-          <path d="M0,8 l8,-8 M-1,1 l2,-2 M7,9 l2,-2" stroke="#333" stroke-width="1.0" stroke-opacity="0.6" />
-        </pattern>
-      </defs>
-      <rect width="12" height="12" fill="url(#mini-cache-pattern)" stroke="#333" />
-    </svg>
-    )
+    <strong>KV Cache:</strong> Indicated by <span style="font-size:12px;vertical-align:baseline">✅</span>.
   </p>
   <div id="controls">
     <span id="step-display">Step: 1</span>
@@ -423,6 +432,16 @@
           .attr('font-size', 12)
           .text(lab);
       }
+      // Cache badge (hidden by default): top-left checkmark that doesn't affect underlying opacity
+      g.append('text')
+        .attr('x', x + 3)
+        .attr('y', y + 14)
+        .attr('class', `${cls} cache-badge`)
+        .attr('data-r', r)
+        .attr('data-c', c)
+        .text('✅')
+        .style('display', 'none');
+
     }
 
     function addA(g, x1, y1, x2, y2) {
@@ -618,6 +637,7 @@
         return this.getAttribute('class').split(' ')[0] + ' rect';
       });
       svg.selectAll('.cache-overlay').style('display', 'none');
+      svg.selectAll('.cache-badge').style('display', 'none');
       // Reset opacity
       svg.selectAll('.rect').style('opacity', null);
     }
@@ -758,7 +778,7 @@
               }
             }
 
-            const cls = i === step ? 'k-highlight' : kvCache ? 'k-cache' : 'k-highlight';
+            const cls = i === step ? 'k-highlight' : 'k-highlight';
             d3.select(this).classed('fade', false).classed(cls, true);
 
             // Apply opacity for keys if opacity mode is on
@@ -784,7 +804,7 @@
 
             // Show cache pattern for cached K elements
             if (kvCache && i < step) {
-              const overlay = svg.selectAll(`${kv} .k.cache-overlay[data-c='${i}']`);
+              const overlay = svg.selectAll(`${kv} .k.cache-badge[data-c='${i}']`);
               overlay.style('display', 'block');
 
               // In opacity mode, add class for more subtle pattern
@@ -811,7 +831,7 @@
               }
             }
 
-            const cls = r === step ? 'v-highlight' : kvCache ? 'v-cache' : 'v-highlight';
+            const cls = r === step ? 'v-highlight' : 'v-highlight';
             d3.select(this).classed('fade', false).classed(cls, true);
 
             // Apply opacity for values if opacity mode is on
@@ -837,7 +857,7 @@
 
             // Show cache pattern for cached V elements
             if (kvCache && r < step) {
-              const overlay = svg.selectAll(`${kv} .v.cache-overlay[data-r='${r}']`);
+              const overlay = svg.selectAll(`${kv} .v.cache-badge[data-r='${r}']`);
               overlay.style('display', 'block');
 
               // In opacity mode, add class for more subtle pattern
