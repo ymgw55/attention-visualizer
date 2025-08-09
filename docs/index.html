@@ -182,6 +182,11 @@
         <option value="1">1</option>
       </select>
     </label>
+    <label>Attention Sinks:
+      <select id="sinks-select" disabled>
+        <option value="0" selected>0</option>
+      </select>
+    </label>
   </div>
   <div id="container"></div>
 
@@ -190,7 +195,7 @@
     const HEADS = 4, TOKENS = 6, CELL = 28, ROW_H = CELL, W_QVO = CELL * 2, H_QVO = ROW_H, W_K = CELL, H_K = ROW_H * 2, PAD_H = 64, HEAD_MARGIN = 32, HEAD_HEIGHT = TOKENS * ROW_H;
 
     /************** Runtime **************/
-    let groups = 4, step = 0, playing = true, kvCache = false, winSetting = 'all';
+    let groups = 4, step = 0, playing = true, kvCache = false, winSetting = 'all', attentionSinks = 0;
 
     /************** D3 roots **************/
     const container = d3.select('#container');
@@ -489,20 +494,23 @@
           const windowStart = Math.max(0, r - w + 1);
           const inWindow = c >= windowStart && c <= r && r <= step;
 
-          // Mark positions outside sliding window (left bottom) with light gray
-          if (w !== Infinity && c < windowStart && r <= step) {
+          // Check if position is within attention sinks range (only for computed rows)
+          const inAttentionSinks = w !== Infinity && c < attentionSinks && r <= step;
+
+          // Mark positions outside sliding window (left bottom) with light gray, except for attention sinks
+          if (w !== Infinity && c < windowStart && r <= step && !inAttentionSinks) {
             d3.select(this).classed('fade', false).classed('masked', true);
             return;
           }
 
           if (kvCache) {
-            if (r === step && inWindow) {
+            if (r === step && (inWindow || inAttentionSinks)) {
               // In KV cache mode, attention matrix is always newly computed (not cached)
               // So use highlight color, not cache color
               d3.select(this).classed('fade', false).classed('m-highlight', true);
             }
           } else {
-            if (inWindow) {
+            if (inWindow || inAttentionSinks) {
               d3.select(this).classed('fade', false).classed('m-highlight', true);
             }
           }
@@ -516,11 +524,12 @@
           // Keys are available up to current step
           const inRange = i <= step;
           if (inRange) {
-            // In KV cache mode with sliding window, don't show cached keys that are outside the window
+            // In KV cache mode with sliding window, don't show cached keys that are outside the window and not in attention sinks
             if (kvCache && w !== Infinity) {
               const windowStart = Math.max(0, step - w + 1);
-              if (i < windowStart) {
-                // This key is cached but outside the sliding window, so don't highlight it
+              const inAttentionSinks = i < attentionSinks;
+              if (i < windowStart && !inAttentionSinks) {
+                // This key is cached but outside the sliding window and not in attention sinks, so don't highlight it
                 return;
               }
             }
@@ -539,11 +548,12 @@
           // Values are available up to current step
           const inRange = r <= step;
           if (inRange) {
-            // In KV cache mode with sliding window, don't show cached values that are outside the window
+            // In KV cache mode with sliding window, don't show cached values that are outside the window and not in attention sinks
             if (kvCache && w !== Infinity) {
               const windowStart = Math.max(0, step - w + 1);
-              if (r < windowStart) {
-                // This value is cached but outside the sliding window, so don't highlight it
+              const inAttentionSinks = r < attentionSinks;
+              if (r < windowStart && !inAttentionSinks) {
+                // This value is cached but outside the sliding window and not in attention sinks, so don't highlight it
                 return;
               }
             }
@@ -593,6 +603,30 @@
 
     d3.select('#window-select').on('change', function () {
       winSetting = this.value;
+
+      // Update attention sinks options based on sliding window setting
+      const sinksSelect = d3.select('#sinks-select');
+      sinksSelect.selectAll('option').remove();
+
+      if (winSetting === 'all') {
+        sinksSelect.attr('disabled', true);
+        sinksSelect.append('option').attr('value', '0').attr('selected', true).text('0');
+        attentionSinks = 0;
+      } else {
+        sinksSelect.attr('disabled', null);
+        const maxSinks = TOKENS - parseInt(winSetting);
+        for (let i = 0; i <= maxSinks; i++) {
+          const option = sinksSelect.append('option').attr('value', i).text(i);
+          if (i === 0) option.attr('selected', true);
+        }
+        attentionSinks = 0;
+      }
+
+      update();
+    });
+
+    d3.select('#sinks-select').on('change', function () {
+      attentionSinks = +this.value;
       update();
     });
 

@@ -1,12 +1,13 @@
 # Attention Visualizer
 
-An interactive visualization tool for understanding attention mechanisms in transformer models, including Multi-Head Attention (MHA), Grouped Query Attention (GQA), and Multi-Query Attention (MQA). Also supports KV caching and sliding window attention visualization.
+An interactive visualization tool for understanding attention mechanisms in transformer models, including Multi-Head Attention (MHA), Grouped Query Attention (GQA), and Multi-Query Attention (MQA). Also supports KV caching, sliding window attention, and attention sinks visualization.
 
 ## Features
 
 - **Multiple Attention Types**: Supports MHA, GQA, and MQA visualization
 - **KV Cache Visualization**: Shows cached values with hatched patterns to understand inference optimization
 - **Sliding Window Attention**: Configurable attention window sizes for local attention patterns
+- **Attention Sinks**: Allows attention to initial tokens in sliding window for efficient streaming
 - **Interactive Visualization**: Color-coded highlighting with play/pause animation and step-by-step exploration
 
 ## References
@@ -17,6 +18,7 @@ An interactive visualization tool for understanding attention mechanisms in tran
 - [Fast Transformer Decoding: One Write-Head is All You Need](https://arxiv.org/abs/1911.02150) - Shazeer, 2019 (Multi-Query Attention)
 - [Transformer-XL: Attentive Language Models Beyond a Fixed-Length Context](https://arxiv.org/abs/1901.02860) - Dai et al., 2019 (KV Cache)
 - [Longformer: The Long-Document Transformer](https://arxiv.org/abs/2004.05150) - Beltagy et al., 2020 (Sliding Window Attention)
+- [Efficient Streaming Language Models with Attention Sinks](https://arxiv.org/abs/2309.17453) - Xiao et al. 2024 (Attention Sinks)
 
 ### Resources
 The attention calculation animation was inspired by this resource. Thank you!
