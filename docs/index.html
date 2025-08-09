@@ -57,23 +57,23 @@
 
     /* highlight colours */
     .q-highlight {
-      fill: #5679ea !important;
+      fill: #3e63dd !important;
     }
 
     .k-highlight {
-      fill: #f46666 !important;
+      fill: #f15353 !important;
     }
 
     .v-highlight {
-      fill: #f1cf87 !important;
+      fill: #e2b75a !important;
     }
 
     .m-highlight {
-      fill: #c195e5 !important;
+      fill: #802dc4 !important;
     }
 
     .o-highlight {
-      fill: #37be6b !important;
+      fill: #2aa85a !important;
     }
 
     /* cache colours (pale) */
@@ -141,25 +141,6 @@
       background-color: #f0f0f0;
       color: #333;
     }
-
-    /* === Patch: disable hatch overlay and use top-left check badge for KV cache === */
-    .cache-overlay {
-      display: none !important;
-      opacity: 1 !important;
-      mix-blend-mode: normal !important;
-    }
-
-    .cache-overlay.opacity-mode {
-      opacity: 1 !important;
-    }
-
-    /* Badge shown on cached K/V blocks (does not affect block opacity) */
-    .cache-badge {
-      pointer-events: none;
-      font-size: 12px;
-      font-weight: 900;
-      fill: #333;
-    }
   </style>
 </head>
 
@@ -175,7 +156,17 @@
     <strong>Attention Masks:</strong> Gray areas (future & out-of-window)
   </p>
   <p id="cache-explanation" style="margin:.5rem 0 1rem 0;font-size:.85rem;color:#666;visibility:hidden">
-    <strong>KV Cache:</strong> Indicated by <span style="font-size:12px;vertical-align:baseline">✅</span>.
+    <strong>KV Cache:</strong> Hatched areas (
+    <svg width="12" height="12" style="vertical-align:middle;margin:0 2px">
+      <defs>
+        <pattern id="mini-cache-pattern" patternUnits="userSpaceOnUse" width="8" height="8">
+          <rect width="8" height="8" fill="white" />
+          <path d="M0,8 l8,-8 M-1,1 l2,-2 M7,9 l2,-2" stroke="#333" stroke-width="1.0" stroke-opacity="0.6" />
+        </pattern>
+      </defs>
+      <rect width="12" height="12" fill="url(#mini-cache-pattern)" stroke="#333" />
+    </svg>
+    )
   </p>
   <div id="controls">
     <span id="step-display">Step: 1</span>
@@ -256,61 +247,66 @@
 
     // Function to compute attention opacities for a given head
     function computeAttentionOpacities(head, currentStep, windowSize, attentionSinks) {
-      const opacities = Array(TOKENS).fill(null).map(() => Array(TOKENS).fill(0));
+      // Per-head Queries; Keys may be shared across heads for GQA/MQA
+      const probs = Array(TOKENS).fill(null).map(() => Array(TOKENS).fill(0));
 
-      // Determine which head's key/query values to use based on groups setting
+      // Map head -> keyHeadIndex (GQA/MQA share keys), queryHeadIndex is per-head
       let keyHeadIndex, queryHeadIndex;
       if (groups === 4) {
-        // MHA: use head index directly
+        // MHA
         keyHeadIndex = head;
         queryHeadIndex = head;
       } else if (groups === 2) {
-        // GQA: head 1,2 use head1 (index 0), head 3,4 use head3 (index 2)
+        // GQA: heads 0,1 share keys of head 0; heads 2,3 share keys of head 2
         const groupIndex = Math.floor(head / 2);
         keyHeadIndex = groupIndex === 0 ? 0 : 2;
         queryHeadIndex = head;
-      } else if (groups === 1) {
-        // MQA: all heads use head1 (index 0)
+      } else {
+        // MQA: all heads share keys of head 0
         keyHeadIndex = 0;
         queryHeadIndex = head;
       }
 
-      for (let r = 0; r <= currentStep; r++) {
-        const attentionRow = [];
-        let sum = 0;
+      // Temperature to accentuate head differences (tune 2.0–8.0)
+      const beta = 5.0;
 
-        // First pass: compute raw attention values and identify non-masked positions
+      for (let r = 0; r <= currentStep; r++) {
+        // Build logits for this row (masked positions remain -Infinity)
+        const logits = new Array(TOKENS).fill(-Infinity);
+        const q = queryOpacities[r][queryHeadIndex];
+
         for (let c = 0; c < TOKENS; c++) {
-          // Check if this position should be masked
           const isFuture = c > r;
           const windowStart = Math.max(0, r - windowSize + 1);
           const isOutOfWindow = windowSize !== Infinity && c < windowStart;
-          const isInAttentionSinks = windowSize !== Infinity && c < attentionSinks;
+          const inAttentionSinks = windowSize !== Infinity && c < attentionSinks;
 
-          if (isFuture || (isOutOfWindow && !isInAttentionSinks)) {
-            attentionRow[c] = 0; // Masked position
-          } else {
-            // Compute attention: q_i * k_j + c_i (no max needed since constants are positive)
-            const q_i = queryOpacities[r][queryHeadIndex];
-            const k_j = keyOpacities[c][keyHeadIndex];
-            const c_i = queryConstants[r][queryHeadIndex];
-            const attention = q_i * k_j + c_i;
-            attentionRow[c] = attention;
-            sum += attention; // Only add non-masked values to sum
+          if (isFuture || (isOutOfWindow && !inAttentionSinks)) {
+            continue;
           }
+          const k = keyOpacities[c][keyHeadIndex];
+          logits[c] = beta * (q * k);
         }
 
-        // Second pass: normalize only non-masked positions so their sum equals 1
-        if (sum > 0) {
+        // Softmax over valid positions
+        const maxLogit = Math.max(...logits);
+        if (maxLogit === -Infinity) continue;
+
+        let denom = 0;
+        const exps = new Array(TOKENS).fill(0);
+        for (let c = 0; c < TOKENS; c++) {
+          if (logits[c] === -Infinity) { exps[c] = 0; continue; }
+          const e = Math.exp(logits[c] - maxLogit);
+          exps[c] = e;
+          denom += e;
+        }
+        if (denom > 0) {
           for (let c = 0; c < TOKENS; c++) {
-            if (attentionRow[c] > 0) { // Only normalize non-masked positions
-              opacities[r][c] = attentionRow[c] / sum;
-            }
+            probs[r][c] = exps[c] / denom;
           }
         }
       }
-
-      return opacities;
+      return probs;
     }
 
     // Function to compute output values for all heads and all steps
@@ -432,16 +428,6 @@
           .attr('font-size', 12)
           .text(lab);
       }
-      // Cache badge (hidden by default): top-left checkmark that doesn't affect underlying opacity
-      g.append('text')
-        .attr('x', x + 3)
-        .attr('y', y + 14)
-        .attr('class', `${cls} cache-badge`)
-        .attr('data-r', r)
-        .attr('data-c', c)
-        .text('✅')
-        .style('display', 'none');
-
     }
 
     function addA(g, x1, y1, x2, y2) {
@@ -637,7 +623,6 @@
         return this.getAttribute('class').split(' ')[0] + ' rect';
       });
       svg.selectAll('.cache-overlay').style('display', 'none');
-      svg.selectAll('.cache-badge').style('display', 'none');
       // Reset opacity
       svg.selectAll('.rect').style('opacity', null);
     }
@@ -778,7 +763,7 @@
               }
             }
 
-            const cls = i === step ? 'k-highlight' : 'k-highlight';
+            const cls = i === step ? 'k-highlight' : kvCache ? 'k-cache' : 'k-highlight';
             d3.select(this).classed('fade', false).classed(cls, true);
 
             // Apply opacity for keys if opacity mode is on
@@ -804,7 +789,7 @@
 
             // Show cache pattern for cached K elements
             if (kvCache && i < step) {
-              const overlay = svg.selectAll(`${kv} .k.cache-badge[data-c='${i}']`);
+              const overlay = svg.selectAll(`${kv} .k.cache-overlay[data-c='${i}']`);
               overlay.style('display', 'block');
 
               // In opacity mode, add class for more subtle pattern
@@ -831,7 +816,7 @@
               }
             }
 
-            const cls = r === step ? 'v-highlight' : 'v-highlight';
+            const cls = r === step ? 'v-highlight' : kvCache ? 'v-cache' : 'v-highlight';
             d3.select(this).classed('fade', false).classed(cls, true);
 
             // Apply opacity for values if opacity mode is on
@@ -857,7 +842,7 @@
 
             // Show cache pattern for cached V elements
             if (kvCache && r < step) {
-              const overlay = svg.selectAll(`${kv} .v.cache-badge[data-r='${r}']`);
+              const overlay = svg.selectAll(`${kv} .v.cache-overlay[data-r='${r}']`);
               overlay.style('display', 'block');
 
               // In opacity mode, add class for more subtle pattern
