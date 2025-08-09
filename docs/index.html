@@ -275,62 +275,69 @@
     ];
 
     // Function to compute attention opacities for a given head
+    // Function to compute attention opacities for a given head (per-head Query; shared Keys for GQA/MQA)
     function computeAttentionOpacities(head, currentStep, windowSize, attentionSinks) {
-      const opacities = Array(TOKENS).fill(null).map(() => Array(TOKENS).fill(0));
+      // probs[r][c] in [0,1], row-wise softmax over valid positions
+      const probs = Array(TOKENS).fill(null).map(() => Array(TOKENS).fill(0));
 
-      // Determine which head's key/query values to use based on groups setting
+      // Map head to key/query indices based on KV Heads (groups)
       let keyHeadIndex, queryHeadIndex;
       if (groups === 4) {
-        // MHA: use head index directly
+        // MHA: per-head keys and queries
         keyHeadIndex = head;
         queryHeadIndex = head;
       } else if (groups === 2) {
-        // GQA: head 1,2 use head1 (index 0), head 3,4 use head3 (index 2)
+        // GQA: heads (0,1)->keys of 0, (2,3)->keys of 2; queries are per-head
         const groupIndex = Math.floor(head / 2);
         keyHeadIndex = groupIndex === 0 ? 0 : 2;
         queryHeadIndex = head;
-      } else if (groups === 1) {
-        // MQA: all heads use head1 (index 0)
+      } else {
+        // MQA: all heads share keys of head 0; queries are per-head
         keyHeadIndex = 0;
         queryHeadIndex = head;
       }
 
-      for (let r = 0; r <= currentStep; r++) {
-        const attentionRow = [];
-        let sum = 0;
+      // Temperature (larger -> sharper differences). Tune if needed.
+      const beta = 5.0;
 
-        // First pass: compute raw attention values and identify non-masked positions
+      for (let r = 0; r <= currentStep; r++) {
+        const logits = new Array(TOKENS).fill(-Infinity);
+        const q = queryOpacities[r][queryHeadIndex];
+
         for (let c = 0; c < TOKENS; c++) {
-          // Check if this position should be masked
           const isFuture = c > r;
           const windowStart = Math.max(0, r - windowSize + 1);
           const isOutOfWindow = windowSize !== Infinity && c < windowStart;
-          const isInAttentionSinks = windowSize !== Infinity && c < attentionSinks;
+          const inAttentionSinks = windowSize !== Infinity && c < attentionSinks;
 
-          if (isFuture || (isOutOfWindow && !isInAttentionSinks)) {
-            attentionRow[c] = 0; // Masked position
-          } else {
-            // Compute attention: q_i * k_j + c_i (no max needed since constants are positive)
-            const q_i = queryOpacities[r][queryHeadIndex];
-            const k_j = keyOpacities[c][keyHeadIndex];
-            const c_i = queryConstants[r][queryHeadIndex];
-            const attention = q_i * k_j + c_i;
-            attentionRow[c] = attention;
-            sum += attention; // Only add non-masked values to sum
+          // Mask future, and out-of-window unless in attention sinks
+          if (isFuture || (isOutOfWindow && !inAttentionSinks)) {
+            continue;
           }
+
+          const k = keyOpacities[c][keyHeadIndex];
+          logits[c] = beta * (q * k);
         }
 
-        // Second pass: normalize only non-masked positions so their sum equals 1
-        if (sum > 0) {
+        // Row-wise softmax over valid positions
+        const maxLogit = Math.max(...logits);
+        if (maxLogit === -Infinity) continue; // all masked
+        let denom = 0;
+        const exps = new Array(TOKENS).fill(0);
+        for (let c = 0; c < TOKENS; c++) {
+          if (logits[c] === -Infinity) { exps[c] = 0; continue; }
+          const e = Math.exp(logits[c] - maxLogit);
+          exps[c] = e;
+          denom += e;
+        }
+        if (denom > 0) {
           for (let c = 0; c < TOKENS; c++) {
-            if (attentionRow[c] > 0) { // Only normalize non-masked positions
-              opacities[r][c] = attentionRow[c] / sum;
-            }
+            probs[r][c] = exps[c] / denom;
           }
         }
       }
 
-      return opacities;
+      return probs;
     }
 
     // Function to compute output values for all heads and all steps
