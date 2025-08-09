@@ -1,12 +1,14 @@
 <!-- Debug-monolith: single-file index.html (4 heads, 6 tokens, sliding window) -->
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Attention Visualizer</title>
   <!-- Analytics -->
-  <script async src="https://analytics.umami.is/script.js" data-website-id="e4c0540b-ef70-4ae4-863a-887b7841211b"></script>
+  <script async src="https://analytics.umami.is/script.js"
+    data-website-id="e4c0540b-ef70-4ae4-863a-887b7841211b"></script>
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <style>
     body {
@@ -15,7 +17,7 @@
       padding: 1rem;
       background: #fafafa;
     }
-    
+
     #controls {
       display: flex;
       flex-wrap: wrap;
@@ -23,7 +25,7 @@
       align-items: center;
       margin-bottom: 1rem;
     }
-    
+
     #controls button,
     #controls select {
       padding: 0.4rem 0.8rem;
@@ -33,17 +35,17 @@
       font-size: .9rem;
       cursor: pointer;
     }
-    
+
     #controls button:hover,
     #controls select:hover {
       background: #f0f0f0;
     }
-    
+
     #step-display {
       font-weight: 600;
       font-size: 1.3rem;
     }
-    
+
     #container {
       overflow-x: auto;
       border: 1px solid #ddd;
@@ -54,38 +56,62 @@
     }
 
     /* highlight colours */
-    .q-highlight { fill: #3e63dd !important; }
-    .k-highlight { fill: #f15353 !important; }
-    .v-highlight { fill: #e2b75a !important; }
-    .m-highlight { fill: #802dc4 !important; }
-    .o-highlight { fill: #2aa85a !important; }
+    .q-highlight {
+      fill: #3e63dd !important;
+    }
+
+    .k-highlight {
+      fill: #f15353 !important;
+    }
+
+    .v-highlight {
+      fill: #e2b75a !important;
+    }
+
+    .m-highlight {
+      fill: #802dc4 !important;
+    }
+
+    .o-highlight {
+      fill: #2aa85a !important;
+    }
 
     /* cache colours (pale) */
-    .k-cache { fill: #f0b6b6 !important; }
-    .v-cache { fill: #ffe9a8 !important; }
-    .m-cache { fill: #d9b8ff !important; }
+    .k-cache {
+      fill: #f0b6b6 !important;
+    }
+
+    .v-cache {
+      fill: #ffe9a8 !important;
+    }
+
+    .m-cache {
+      fill: #d9b8ff !important;
+    }
 
     /* cache pattern overlay */
-    .cache-overlay { 
+    .cache-overlay {
       fill: url(#cache-pattern) !important;
       stroke: #666 !important;
       stroke-width: 1 !important;
     }
 
     /* masked (future) attention weights */
-    .masked { 
+    .masked {
       fill: #f5f5f5 !important;
       stroke: #ddd !important;
     }
 
-    .fade { opacity: .25; }
-    
+    .fade {
+      opacity: .25;
+    }
+
     line.arrow {
       stroke: #555;
       stroke-width: 1.6;
       marker-end: url(#arrowhead);
     }
-    
+
     #header-links {
       position: absolute;
       top: 1rem;
@@ -95,7 +121,7 @@
       gap: 0.2rem;
       font-size: 0.9rem;
     }
-    
+
     #header-links a {
       color: #666;
       text-decoration: none;
@@ -103,35 +129,37 @@
       border-radius: 4px;
       transition: background-color 0.2s;
     }
-    
+
     #header-links a:hover {
       background-color: #f0f0f0;
       color: #333;
     }
   </style>
 </head>
+
 <body>
   <div id="header-links">
     <a href="https://github.com/ymgw55/attention-visualizer" target="_blank">GitHub</a>
     <a href="https://ymgw55.github.io/" target="_blank">Hiroaki Yamagiwa</a>
   </div>
-  <h2 style="margin:0"><a href="#" onclick="location.reload(); return false;" style="color:inherit;text-decoration:none;cursor:pointer">Attention Visualizer</a></h2>
+  <h2 style="margin:0"><a href="#" onclick="location.reload(); return false;"
+      style="color:inherit;text-decoration:none;cursor:pointer">Attention Visualizer</a></h2>
   <p style="margin:.2rem 0 .8rem 0">Heads=4, Tokens=6 (fixed)</p>
-  <p id="cache-explanation" style="margin:.5rem 0 .5rem 0;font-size:.85rem;color:#666;display:none">
+  <p id="mask-explanation" style="margin:.5rem 0 .5rem 0;font-size:.85rem;color:#666;">
+    <strong>Attention Masks:</strong> Gray areas (future & out-of-window)
+  </p>
+  <p id="cache-explanation" style="margin:.5rem 0 1rem 0;font-size:.85rem;color:#666;visibility:hidden">
     <strong>KV Cache:</strong> Hatched areas (
     <svg width="12" height="12" style="vertical-align:middle;margin:0 2px">
       <defs>
         <pattern id="mini-cache-pattern" patternUnits="userSpaceOnUse" width="6" height="6">
-          <rect width="6" height="6" fill="none"/>
-          <path d="M0,6 l6,-6 M-1,1 l2,-2 M5,7 l2,-2" stroke="#666" stroke-width="1" stroke-opacity="0.4"/>
+          <rect width="6" height="6" fill="none" />
+          <path d="M0,6 l6,-6 M-1,1 l2,-2 M5,7 l2,-2" stroke="#666" stroke-width="1" stroke-opacity="0.4" />
         </pattern>
       </defs>
-      <rect width="12" height="12" fill="url(#mini-cache-pattern)" stroke="#666"/>
+      <rect width="12" height="12" fill="url(#mini-cache-pattern)" stroke="#666" />
     </svg>
     )
-  </p>
-  <p id="mask-explanation" style="margin:.5rem 0 1rem 0;font-size:.85rem;color:#666;">
-    <strong>Attention Masks:</strong> Gray areas (future & out-of-window)
   </p>
   <div id="controls">
     <span id="step-display">Step: 1</span>
@@ -160,15 +188,15 @@
   <script>
     /************** Configuration **************/
     const HEADS = 4, TOKENS = 6, CELL = 28, ROW_H = CELL, W_QVO = CELL * 2, H_QVO = ROW_H, W_K = CELL, H_K = ROW_H * 2, PAD_H = 64, HEAD_MARGIN = 32, HEAD_HEIGHT = TOKENS * ROW_H;
-    
+
     /************** Runtime **************/
     let groups = 4, step = 0, playing = true, kvCache = false, winSetting = 'all';
-    
+
     /************** D3 roots **************/
     const container = d3.select('#container');
     let svg, timer;
     let X = {};
-    
+
     function computeX() {
       X.Q = 60; // Add left margin for head labels
       X.K = X.Q + W_QVO + PAD_H;
@@ -177,14 +205,14 @@
       X.O = X.V + W_QVO + PAD_H;
       X.W = X.O + W_QVO + 20; // Add extra margin for "Attention" label
     }
-    
+
     const qCenterY = y => y + TOKENS / 2 * ROW_H;
-    
+
     /************** Helpers **************/
     function clearSvg() {
       svg && svg.remove();
     }
-    
+
     function block(g, x, y, w, h, lab, cls, r = null, c = null) {
       const rect = g.append('rect')
         .attr('x', x)
@@ -196,7 +224,7 @@
         .attr('class', `${cls} rect`)
         .attr('data-r', r)
         .attr('data-c', c);
-      
+
       // Add overlay rect for cache pattern
       g.append('rect')
         .attr('x', x)
@@ -207,7 +235,7 @@
         .attr('data-r', r)
         .attr('data-c', c)
         .style('display', 'none');
-      
+
       if (lab) {
         g.append('text')
           .attr('x', x + w / 2)
@@ -218,7 +246,7 @@
           .text(lab);
       }
     }
-    
+
     function addA(g, x1, y1, x2, y2) {
       g.append('line')
         .attr('class', 'arrow')
@@ -227,19 +255,19 @@
         .attr('x2', x2)
         .attr('y2', y2);
     }
-    
+
     const win = () => winSetting === 'all' ? Infinity : +winSetting;
-    
+
     /************** Layout **************/
     function drawLayout() {
       clearSvg();
       computeX();
-      
+
       const H = HEAD_HEIGHT * HEADS + HEAD_MARGIN * (HEADS - 1);
       svg = container.append('svg')
         .attr('width', X.W)
         .attr('height', H + 30); // Add extra height for section labels
-      
+
       // Add section labels at the top
       const labelY = 15;
       svg.append('text')
@@ -250,7 +278,7 @@
         .attr('font-weight', 'bold')
         .attr('fill', '#333')
         .text('Queries');
-      
+
       svg.append('text')
         .attr('x', X.K + TOKENS * W_K / 2)
         .attr('y', labelY)
@@ -259,7 +287,7 @@
         .attr('font-weight', 'bold')
         .attr('fill', '#333')
         .text('Keys');
-      
+
       svg.append('text')
         .attr('x', X.M + TOKENS * CELL / 2)
         .attr('y', labelY)
@@ -268,7 +296,7 @@
         .attr('font-weight', 'bold')
         .attr('fill', '#333')
         .text('Attention Weight');
-      
+
       svg.append('text')
         .attr('x', X.V + W_QVO / 2)
         .attr('y', labelY)
@@ -277,7 +305,7 @@
         .attr('font-weight', 'bold')
         .attr('fill', '#333')
         .text('Values');
-      
+
       svg.append('text')
         .attr('x', X.O + W_QVO / 2)
         .attr('y', labelY)
@@ -286,7 +314,7 @@
         .attr('font-weight', 'bold')
         .attr('fill', '#333')
         .text('Attention');
-      
+
       svg.append('defs')
         .append('marker')
         .attr('id', 'arrowhead')
@@ -299,37 +327,37 @@
         .append('path')
         .attr('d', 'M0 0 L10 5 L0 10 z')
         .attr('fill', '#555');
-      
+
       // Add patterns for cache visualization
       const defs = svg.select('defs');
-      
+
       const pattern = defs.append('pattern')
         .attr('id', 'cache-pattern')
         .attr('patternUnits', 'userSpaceOnUse')
         .attr('width', 6)
         .attr('height', 6);
-      
+
       pattern.append('rect')
         .attr('width', 6)
         .attr('height', 6)
         .attr('fill', 'none');
-      
+
       pattern.append('path')
         .attr('d', 'M0,6 l6,-6 M-1,1 l2,-2 M5,7 l2,-2')
         .attr('stroke', '#666')
         .attr('stroke-width', 1)
         .attr('stroke-opacity', 0.4);
-      
+
       const hpg = HEADS / groups, meta = [];
       for (let g = 0; g < groups; g++) {
         const h0 = g * hpg, h1 = h0 + hpg - 1;
         const yT = h0 * (HEAD_HEIGHT + HEAD_MARGIN) + 30, yB = h1 * (HEAD_HEIGHT + HEAD_MARGIN) + HEAD_HEIGHT + 30;
         meta.push({ kC: (yT + yB) / 2, vT: (yT + yB) / 2 - TOKENS * H_QVO / 2, h0, h1 });
       }
-      
+
       for (let h = 0; h < HEADS; h++) {
         const y = h * (HEAD_HEIGHT + HEAD_MARGIN) + 30, gh = svg.append('g').attr('class', `head h${h}`); // Add 30px offset for labels
-        
+
         // Add head label
         gh.append('text')
           .attr('x', 50)
@@ -340,93 +368,93 @@
           .attr('font-weight', 'bold')
           .attr('fill', '#333')
           .text(`Head ${h + 1}`);
-        
+
         for (let r = 0; r < TOKENS; r++) {
           block(gh, X.Q, y + r * ROW_H, W_QVO, H_QVO, `q${r + 1}`, 'q', r);
         }
-        
+
         for (let r = 0; r < TOKENS; r++) {
           for (let c = 0; c < TOKENS; c++) {
             block(gh, X.M + c * CELL, y + r * CELL, CELL, CELL, '', 'm', r, c);
           }
         }
-        
+
         for (let r = 0; r < TOKENS; r++) {
           block(gh, X.O, y + r * ROW_H, W_QVO, H_QVO, `o${r + 1}`, 'o', r);
         }
       }
-      
+
       meta.forEach((m, i) => {
         const g = svg.append('g').attr('class', `kv g${i}`);
         const yK = m.kC - H_K / 2;
-        
+
         for (let c = 0; c < TOKENS; c++) {
           block(g, X.K + c * W_K, yK, W_K, H_K, `k${c + 1}`, 'k', null, c);
         }
-        
+
         for (let r = 0; r < TOKENS; r++) {
           block(g, X.V, m.vT + r * H_QVO, W_QVO, H_QVO, `v${r + 1}`, 'v', r);
         }
       });
-      
+
       const arrows = svg.append('g');
       const ARROW_MARGIN = 8; // Add small margin between blocks and arrows
       const K_L = X.K - ARROW_MARGIN, K_R = X.K + TOKENS * W_K + ARROW_MARGIN, M_L = X.M - ARROW_MARGIN, M_R = X.M + TOKENS * CELL + ARROW_MARGIN, V_L = X.V - ARROW_MARGIN, V_R = X.V + W_QVO + ARROW_MARGIN, O_L = X.O - ARROW_MARGIN;
       const grp = h => Math.floor(h / hpg);
-      
+
       for (let h = 0; h < HEADS; h++) {
         const y = h * (HEAD_HEIGHT + HEAD_MARGIN) + 30, mid = qCenterY(y), m = meta[grp(h)];
         const g = grp(h);
         const headInGroup = h - m.h0; // Position of this head within its group
         const totalHeadsInGroup = m.h1 - m.h0 + 1; // Total heads in this group
-        
+
         // Add small vertical offset for multiple arrows to same KV group
         const arrowOffset = totalHeadsInGroup > 1 ? (headInGroup - (totalHeadsInGroup - 1) / 2) * 12 : 0;
-        
+
         addA(arrows, X.Q + W_QVO + ARROW_MARGIN, mid, K_L, m.kC + arrowOffset);
         addA(arrows, M_R, mid, V_L, m.kC + arrowOffset);
         addA(arrows, V_R, m.kC + arrowOffset, O_L, mid);
       }
-      
+
       meta.forEach(m => {
         for (let h = m.h0; h <= m.h1; h++) {
           const headInGroup = h - m.h0;
           const totalHeadsInGroup = m.h1 - m.h0 + 1;
           const arrowOffset = totalHeadsInGroup > 1 ? (headInGroup - (totalHeadsInGroup - 1) / 2) * 6 : 0;
-          
+
           addA(arrows, K_R, m.kC + arrowOffset, M_L, qCenterY(h * (HEAD_HEIGHT + HEAD_MARGIN) + 30));
         }
       });
-      
+
       update();
     }
-    
+
     /************** Highlight **************/
     function resetFade() {
       svg.selectAll('rect').classed('fade', true);
     }
-    
+
     function clearHL() {
-      svg.selectAll('.rect').attr('class', function() {
+      svg.selectAll('.rect').attr('class', function () {
         return this.getAttribute('class').split(' ')[0] + ' rect';
       });
       svg.selectAll('.cache-overlay').style('display', 'none');
     }
-    
+
     function update() {
       resetFade();
       clearHL();
-      
+
       const w = win();
       const hpg = HEADS / groups;
       const grp = h => Math.floor(h / hpg);
-      
+
       for (let h = 0; h < HEADS; h++) {
         const sel = `.h${h}`;
         svg.selectAll(`${sel} .q.rect[data-r='${step}']`).classed('fade', false).classed('q-highlight', true);
         svg.selectAll(`${sel} .o.rect[data-r='${step}']`).classed('fade', false).classed('o-highlight', true);
-        
-        svg.selectAll(`${sel} .q.rect`).each(function() {
+
+        svg.selectAll(`${sel} .q.rect`).each(function () {
           const r = +this.dataset.r;
           if (kvCache) {
             if (r === step) return;
@@ -436,8 +464,8 @@
             }
           }
         });
-        
-        svg.selectAll(`${sel} .o.rect`).each(function() {
+
+        svg.selectAll(`${sel} .o.rect`).each(function () {
           const r = +this.dataset.r;
           if (kvCache) {
             if (r === step) return;
@@ -447,26 +475,26 @@
             }
           }
         });
-        
-        svg.selectAll(`${sel} .m.rect`).each(function() {
+
+        svg.selectAll(`${sel} .m.rect`).each(function () {
           const r = +this.dataset.r, c = +this.dataset.c;
-          
+
           // Mark masked (future) positions with light gray
           if (c > r) {
             d3.select(this).classed('fade', false).classed('masked', true);
             return;
           }
-          
+
           // Apply sliding window constraint to attention matrix only
           const windowStart = Math.max(0, r - w + 1);
           const inWindow = c >= windowStart && c <= r && r <= step;
-          
+
           // Mark positions outside sliding window (left bottom) with light gray
           if (w !== Infinity && c < windowStart && r <= step) {
             d3.select(this).classed('fade', false).classed('masked', true);
             return;
           }
-          
+
           if (kvCache) {
             if (r === step && inWindow) {
               // In KV cache mode, attention matrix is always newly computed (not cached)
@@ -480,14 +508,23 @@
           }
         });
       }
-      
+
       for (let g = 0; g < groups; g++) {
         const kv = `.g${g}`;
-        
-        svg.selectAll(`${kv} .k.rect`).each(function(_, i) {
+
+        svg.selectAll(`${kv} .k.rect`).each(function (_, i) {
           // Keys are available up to current step
           const inRange = i <= step;
           if (inRange) {
+            // In KV cache mode with sliding window, don't show cached keys that are outside the window
+            if (kvCache && w !== Infinity) {
+              const windowStart = Math.max(0, step - w + 1);
+              if (i < windowStart) {
+                // This key is cached but outside the sliding window, so don't highlight it
+                return;
+              }
+            }
+
             const cls = i === step ? 'k-highlight' : kvCache ? 'k-cache' : 'k-highlight';
             d3.select(this).classed('fade', false).classed(cls, true);
             // Show cache pattern for cached K elements
@@ -497,11 +534,20 @@
             }
           }
         });
-        
-        svg.selectAll(`${kv} .v.rect`).each(function(_, r) {
+
+        svg.selectAll(`${kv} .v.rect`).each(function (_, r) {
           // Values are available up to current step
           const inRange = r <= step;
           if (inRange) {
+            // In KV cache mode with sliding window, don't show cached values that are outside the window
+            if (kvCache && w !== Infinity) {
+              const windowStart = Math.max(0, step - w + 1);
+              if (r < windowStart) {
+                // This value is cached but outside the sliding window, so don't highlight it
+                return;
+              }
+            }
+
             const cls = r === step ? 'v-highlight' : kvCache ? 'v-cache' : 'v-highlight';
             d3.select(this).classed('fade', false).classed(cls, true);
             // Show cache pattern for cached V elements
@@ -512,10 +558,10 @@
           }
         });
       }
-      
+
       d3.select('#step-display').text(`Step: ${step + 1}`);
     }
-    
+
     /************** Timer **************/
     function run() {
       timer && timer.stop();
@@ -526,33 +572,34 @@
         }
       }, 1400);
     }
-    
+
     /************** Controls **************/
     d3.select('#play-btn').on('click', () => {
       playing = !playing;
       d3.select('#play-btn').text(playing ? '⏸ Pause' : '▶ Play');
     });
-    
+
     d3.select('#cache-btn').on('click', () => {
       kvCache = !kvCache;
       d3.select('#cache-btn').text(`KV Cache: ${kvCache ? 'ON' : 'OFF'}`);
-      d3.select('#cache-explanation').style('display', kvCache ? 'block' : 'none');
+      d3.select('#cache-explanation').style('visibility', kvCache ? 'visible' : 'hidden');
       update();
     });
-    
-    d3.select('#groups-select').on('change', function() {
+
+    d3.select('#groups-select').on('change', function () {
       groups = +this.value;
       drawLayout();
     });
-    
-    d3.select('#window-select').on('change', function() {
+
+    d3.select('#window-select').on('change', function () {
       winSetting = this.value;
       update();
     });
-    
+
     /************** Init **************/
     drawLayout();
     run();
   </script>
 </body>
+
 </html>
