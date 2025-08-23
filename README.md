@@ -2,6 +2,10 @@
 
 An interactive visualization tool for understanding attention mechanisms in transformer models, including Multi-Head Attention (MHA), Grouped Query Attention (GQA), and Multi-Query Attention (MQA). Also supports KV caching, sliding window attention, and attention sinks visualization.
 
+<p align="center">
+    <img src=".github/images/attention-visualizer.gif" width="60%">
+</p>
+
 ## Features
 
 - **Multiple Attention Types**: Supports MHA, GQA, and MQA visualization
